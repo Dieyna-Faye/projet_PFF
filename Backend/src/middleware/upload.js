@@ -10,21 +10,17 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext = path.extname(file.originalname || '').toLowerCase();
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
     cb(null, unique + ext);
   },
 });
 
-const allowedExtensions = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.xls', '.xlsx', '.txt']);
-
 const fileFilter = (req, file, cb) => {
-  const ext = path.extname(file.originalname || '').toLowerCase();
-  if (allowedExtensions.has(ext)) {
-    cb(null, true);
-    return;
-  }
-  cb(new Error('Type de fichier non autorise'), false);
+  const allowed = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.xls', '.xlsx'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowed.includes(ext)) cb(null, true);
+  else cb(new Error('Type de fichier non autorise'), false);
 };
 
 const upload = multer({

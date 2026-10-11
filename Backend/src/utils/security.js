@@ -1,16 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('bcryptjs');
 
-function getJwtSecret() {
-  const configuredSecret = process.env.JWT_SECRET && process.env.JWT_SECRET.trim();
-  if (configuredSecret) return configuredSecret;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET doit être défini en production');
-  }
-  return 'dev-secret-local-only-change-me';
-}
-
-const JWT_SECRET = getJwtSecret();
+const JWT_SECRET = process.env.JWT_SECRET || 'changez-cette-cle-secrete-en-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
 function signToken(payload) {

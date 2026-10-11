@@ -12,8 +12,7 @@ function buildToken(user, role) {
 
 const register = asyncHandler(async (req, res) => {
   const body = req.validated;
-  const requestedRole = typeof body.role === 'string' ? body.role.toLowerCase() : '';
-  const roleName = requestedRole && ROLES[requestedRole.toUpperCase()] ? requestedRole : ROLES.SUPPLIER;
+  const roleName = body.role && ROLES[body.role.toUpperCase()] ? body.role : ROLES.SUPPLIER;
   const role = await Role.findOne({ where: { name: roleName } });
   if (!role) return res.status(400).json({ error: 'Role invalide' });
 

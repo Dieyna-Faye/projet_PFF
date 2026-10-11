@@ -108,6 +108,8 @@ Bid.init(
     submittedAt: { type: DataTypes.DATE },
     isCompliant: { type: DataTypes.BOOLEAN },
     complianceSummary: { type: DataTypes.TEXT },
+    complianceDetails: { type: DataTypes.TEXT, defaultValue: '[]' },
+    receiptHash: { type: DataTypes.STRING },
     automaticSummary: { type: DataTypes.TEXT },
     extractedText: { type: DataTypes.TEXT },
   },
@@ -129,6 +131,7 @@ BidDocument.init(
     size: { type: DataTypes.INTEGER },
     expiryDate: { type: DataTypes.DATE },
     isExpired: { type: DataTypes.BOOLEAN, defaultValue: false },
+    extractedText: { type: DataTypes.TEXT },
   },
   { sequelize, modelName: 'BidDocument', tableName: 'bid_documents' }
 );
@@ -173,6 +176,8 @@ Score.init(
     adminScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
     technicalScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
     financialScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
+    experienceScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
+    delayScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
     globalScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
     riskLevel: { type: DataTypes.STRING, defaultValue: 'faible' },
     recommendation: { type: DataTypes.STRING },
@@ -228,9 +233,45 @@ Alert.init(
     severity: { type: DataTypes.STRING, defaultValue: 'moyen' },
     message: { type: DataTypes.TEXT },
     status: { type: DataTypes.STRING, defaultValue: 'ouverte' },
+    entityId: { type: DataTypes.UUID },
     metadata: { type: DataTypes.TEXT, defaultValue: '{}' },
   },
   { sequelize, modelName: 'Alert', tableName: 'alerts' }
+);
+
+// ---------------------------------------------------------------------------
+// DELIVERABLE (livrable de marche)
+// ---------------------------------------------------------------------------
+class Deliverable extends Model {}
+Deliverable.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    title: { type: DataTypes.STRING, allowNull: false },
+    description: { type: DataTypes.TEXT },
+    filePath: { type: DataTypes.STRING },
+    originalName: { type: DataTypes.STRING },
+    status: { type: DataTypes.STRING, defaultValue: 'en_attente' }, // en_attente, valide, rejete
+    submissionDate: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+    validationDate: { type: DataTypes.DATE },
+    validationComment: { type: DataTypes.TEXT },
+  },
+  { sequelize, modelName: 'Deliverable', tableName: 'deliverables' }
+);
+
+// ---------------------------------------------------------------------------
+// CONTRACT MILESTONE (jalon / etape de marche)
+// ---------------------------------------------------------------------------
+class ContractMilestone extends Model {}
+ContractMilestone.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    title: { type: DataTypes.STRING, allowNull: false },
+    dueDate: { type: DataTypes.DATE },
+    status: { type: DataTypes.STRING, defaultValue: 'a_faire' }, // a_faire, en_cours, valide, en_retard
+    validatedAt: { type: DataTypes.DATE },
+    notes: { type: DataTypes.TEXT },
+  },
+  { sequelize, modelName: 'ContractMilestone', tableName: 'contract_milestones' }
 );
 
 // ---------------------------------------------------------------------------
@@ -298,6 +339,18 @@ Contract.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' });
 Contract.hasMany(Payment, { foreignKey: 'contractId', as: 'payments' });
 Payment.belongsTo(Contract, { foreignKey: 'contractId', as: 'contract' });
 
+Contract.hasMany(Deliverable, { foreignKey: 'contractId', as: 'deliverables' });
+Deliverable.belongsTo(Contract, { foreignKey: 'contractId', as: 'contract' });
+
+Contract.hasMany(ContractMilestone, { foreignKey: 'contractId', as: 'milestones' });
+ContractMilestone.belongsTo(Contract, { foreignKey: 'contractId', as: 'contract' });
+
+AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasMany(AuditLog, { foreignKey: 'userId', as: 'auditLogs' });
+
+Alert.belongsTo(Tender, { foreignKey: 'entityId', as: 'tender', constraints: false });
+Tender.hasMany(Alert, { foreignKey: 'entityId', as: 'alerts', constraints: false });
+
 const models = {
   sequelize,
   Role,
@@ -312,6 +365,8 @@ const models = {
   Score,
   Contract,
   Payment,
+  Deliverable,
+  ContractMilestone,
   Alert,
   AuditLog,
 };

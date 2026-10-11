@@ -1,7 +1,8 @@
 const asyncHandler = require('express-async-handler');
 const models = require('../models');
-const { Tender, Bid, Supplier, Alert } = models;
+const { Tender, Bid, Supplier, Alert, Contract } = models;
 const { detectFraud } = require('../services/fraud');
+const { detectFraudAdvanced } = require('../services/aiClient');
 const { writeAudit } = require('../middleware/audit');
 
 const runFraudDetection = asyncHandler(async (req, res) => {
@@ -18,7 +19,14 @@ const runFraudDetection = asyncHandler(async (req, res) => {
     extractedText: b.extractedText,
   }));
 
-  const detected = detectFraud(suppliers, bidPlain);
+  const historicalContracts = await Contract.findAll();
+  const aiResult = await detectFraudAdvanced({
+    bids: bidPlain,
+    tender: tender.toJSON ? tender.toJSON() : tender,
+    suppliers: suppliers.map((s) => (s.toJSON ? s.toJSON() : s)),
+    historicalContracts: historicalContracts.map((c) => (c.toJSON ? c.toJSON() : c)),
+  });
+  const detected = aiResult.alerts || [];
 
   // persist alerts (idempotent par type+message+tender)
   const created = [];
@@ -34,14 +42,19 @@ const runFraudDetection = asyncHandler(async (req, res) => {
     created.push(alert);
   }
   await writeAudit({ user: req.user, action: 'FRAUD_SCAN', entity: 'Tender', entityId: tenderId, req });
-  res.json({ scanned: bids.length, alerts: created, tenderId });
+  res.json({ scanned: bids.length, alerts: created, tenderId, totalDetected: detected.length });
 });
 
 const listAlerts = asyncHandler(async (req, res) => {
   const where = {};
   if (req.query.status) where.status = req.query.status;
   if (req.query.severity) where.severity = req.query.severity;
-  const alerts = await Alert.findAll({ where, order: [['createdAt', 'DESC']] });
+  if (req.query.tenderId) where.entityId = req.query.tenderId;
+  const alerts = await Alert.findAll({
+    where,
+    include: [{ model: Tender, as: 'tender', attributes: ['id', 'reference', 'title'] }],
+    order: [['createdAt', 'DESC']],
+  });
   res.json(alerts);
 });
 

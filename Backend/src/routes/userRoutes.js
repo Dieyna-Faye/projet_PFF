@@ -8,10 +8,10 @@ const { authorize, requirePermission } = require('../middleware/authorize');
 const { audit } = require('../middleware/audit');
 
 router.get('/', authenticate, requirePermission('users:manage'), ctrl.listUsers);
-router.get('/:id', authenticate, ctrl.getUser);
-router.post('/', authenticate, requirePermission('users:manage'), validate(userCreateSchema), audit('CREATE_USER', 'User'), ctrl.createUser);
-router.put('/:id', authenticate, requirePermission('users:manage'), validate(userUpdateSchema), audit('UPDATE_USER', 'User'), ctrl.updateUser);
 router.get('/roles', authenticate, ctrl.listRoles);
 router.post('/roles', authenticate, requirePermission('roles:manage'), validate(roleSchema), ctrl.createRole);
+router.get('/:id', authenticate, ctrl.getUser);
+router.post('/', authenticate, requirePermission('users:manage'), validate(userCreateSchema), ctrl.createUser);
+router.put('/:id', authenticate, requirePermission('users:manage'), validate(userUpdateSchema), ctrl.updateUser);
 
 module.exports = router;

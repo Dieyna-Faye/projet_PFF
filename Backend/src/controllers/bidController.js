@@ -7,7 +7,9 @@ const { checkCompliance } = require('../services/docCheck');
 const { computeScores } = require('../services/scoring');
 const { generateSummary } = require('../services/summary');
 const { extractText } = require('../services/pdfExtract');
+const { extractTextWithOCR } = require('../services/aiClient');
 const path = require('path');
+const crypto = require('crypto');
 
 function generateBidReference() {
   const rand = Math.floor(100000 + Math.random() * 900000);
@@ -55,15 +57,20 @@ const uploadBidDocument = asyncHandler(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Aucun fichier envoye' });
 
   let extractedText = '';
+  let ocrCategory = 'autre';
   try {
-    extractedText = await extractText(req.file.path, req.file.mimetype);
+    const ocrResult = await extractTextWithOCR(req.file.path, req.file.mimetype);
+    extractedText = ocrResult.text || '';
+    if (ocrResult.detectedCategory && ocrResult.detectedCategory !== 'autre') {
+      ocrCategory = ocrResult.detectedCategory;
+    }
   } catch (e) {
-    console.error('[PDF]', e.message);
+    console.error('[OCR/PDF]', e.message);
   }
 
   const doc = await BidDocument.create({
     bidId: bid.id,
-    category: req.body.category || 'autre',
+    category: req.body.category || ocrCategory,
     label: req.body.label || req.file.originalname,
     filePath: path.relative(process.cwd(), req.file.path),
     originalName: req.file.originalname,
@@ -86,11 +93,36 @@ const submitBid = asyncHandler(async (req, res) => {
   if (!bid) return res.status(404).json({ error: 'Soumission introuvable' });
   if (bid.status !== 'brouillon')
     return res.status(400).json({ error: 'Soumission deja deposee' });
+
+  const submittedAt = new Date();
+  const receiptPayload = `${bid.id}:${bid.reference}:${bid.supplierId}:${bid.financialAmount}:${submittedAt.toISOString()}`;
+  const receiptHash = crypto.createHash('sha256').update(receiptPayload).digest('hex');
+
   bid.status = 'deposee';
-  bid.submittedAt = new Date();
+  bid.submittedAt = submittedAt;
+  bid.receiptHash = receiptHash;
   await bid.save();
-  await writeAudit({ user: req.user, action: 'SUBMIT_BID', entity: 'Bid', entityId: bid.id, req });
-  res.json({ message: 'Offre deposee. Accuse de reception genere.', bid, receipt: { reference: bid.reference, date: bid.submittedAt } });
+
+  await writeAudit({
+    user: req.user,
+    action: 'SUBMIT_BID',
+    entity: 'Bid',
+    entityId: bid.id,
+    req,
+    details: { receiptHash, reference: bid.reference },
+  });
+
+  res.json({
+    message: 'Offre deposee. Accuse de reception genere.',
+    bid,
+    receipt: {
+      reference: bid.reference,
+      date: bid.submittedAt,
+      hash: bid.receiptHash,
+      supplierId: bid.supplierId,
+      amount: bid.financialAmount,
+    },
+  });
 });
 
 const analyzeBid = asyncHandler(async (req, res) => {
@@ -100,6 +132,7 @@ const analyzeBid = asyncHandler(async (req, res) => {
   const compliance = checkCompliance(bid.documents);
   bid.isCompliant = compliance.isCompliant;
   bid.complianceSummary = compliance.complianceSummary;
+  bid.complianceDetails = JSON.stringify(compliance.checklist || []);
   await bid.save();
 
   const tender = await Tender.findByPk(bid.tenderId);
@@ -124,6 +157,8 @@ const analyzeBid = asyncHandler(async (req, res) => {
     adminScore: scores.adminScore,
     technicalScore: scores.technicalScore,
     financialScore: scores.financialScore,
+    experienceScore: scores.experienceScore,
+    delayScore: scores.delayScore,
     globalScore: scores.globalScore,
     riskLevel: scores.riskLevel,
     recommendation: scores.recommendation,
