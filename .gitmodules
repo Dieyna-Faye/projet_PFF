@@ -1,0 +1,3 @@
+[submodule "marche_publics"]
+	path = marche_publics
+	url = https://github.com/Dieyna-Faye/front_marche_public.git
