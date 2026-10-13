@@ -8,9 +8,11 @@ async function safePost(endpoint, body, timeoutMs = 4000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.AI_SERVICE_API_KEY) headers['X-Internal-AI-Key'] = process.env.AI_SERVICE_API_KEY;
     const res = await fetch(`${AI_SERVICE_URL}${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -35,6 +37,7 @@ async function extractTextWithOCR(filePath, mimeType) {
       isScanned: aiResult.is_scanned || false,
       detectedCategory: aiResult.detected_category || 'autre',
       keywordsFound: aiResult.keywords_found || [],
+      detectedFields: aiResult.detected_fields || {},
       engine: 'Python-OCR',
     };
   }
@@ -45,6 +48,7 @@ async function extractTextWithOCR(filePath, mimeType) {
     isScanned: false,
     detectedCategory: 'autre',
     keywordsFound: [],
+    detectedFields: {},
     engine: 'Node-Local',
   };
 }
@@ -83,29 +87,23 @@ async function detectFraudAdvanced({ bids, tender, suppliers, historicalContract
  */
 async function predictDelayRisk(contractData) {
   const aiResult = await safePost('/api/ai/predict/delay', contractData);
-  if (aiResult && aiResult.risk_level) {
-    return aiResult;
-  }
-  return {
-    probability_of_delay: contractData.riskLevel === 'eleve' ? 0.65 : 0.25,
-    risk_level: contractData.riskLevel === 'eleve' ? 'eleve' : 'faible',
-    risk_factors: contractData.riskLevel === 'eleve' ? ['Offre classée à risque élevé'] : [],
-    recommendations: ['Suivi administratif régulier'],
-    engine: 'Node-Local-Fallback',
-  };
+  return aiResult && aiResult.risk_level ? aiResult : null;
 }
 
 /**
  * Chatbot d'assistance aux soumissionnaires.
  */
 async function askChatbot(question, tenderContext) {
-  const aiResult = await safePost('/api/ai/chatbot/ask', { question, tenderContext });
+  // The hosted language model can take longer than local OCR/risk calls.
+  const aiResult = await safePost('/api/ai/chatbot/ask', { question, tenderContext }, 45000);
   if (aiResult && aiResult.answer) {
     return aiResult;
   }
   return {
-    answer: "Pour soumissionner, vous devez déposer les 7 pièces administratives obligatoires (Quitus fiscal, RCCM, Attestation sociale, etc.) avant la date limite.",
-    engine: "Node-Local-Fallback",
+    answer: "Je ne peux pas consulter les données de votre plateforme. Vérifiez les pièces et exigences dans le règlement de consultation de l'appel d'offres concerné.",
+    engine: "Safe-Fallback",
+    grounded: true,
+    reason: "ai_service_unreachable",
   };
 }
 

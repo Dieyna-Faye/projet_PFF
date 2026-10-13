@@ -31,14 +31,27 @@ const runFraudDetection = asyncHandler(async (req, res) => {
   // persist alerts (idempotent par type+message+tender)
   const created = [];
   for (const a of detected) {
-    const [alert] = await Alert.findOrCreate({
+    const observedAt = new Date().toISOString();
+    const metadata = {
+      ...(a.metadata || {}),
+      tenderId,
+      detectedAt: observedAt,
+      reviewRequired: true,
+      recommendations: a.recommendations || ['Examiner les offres et pièces concernées avant toute conclusion.'],
+    };
+    const [alert, wasCreated] = await Alert.findOrCreate({
       where: { type: a.type, message: a.message, entityId: tenderId },
       defaults: {
         severity: a.severity,
-        metadata: JSON.stringify({ ...a.metadata, tenderId }),
+        metadata: JSON.stringify(metadata),
         status: 'ouverte',
       },
     });
+    if (!wasCreated) {
+      alert.severity = a.severity;
+      alert.metadata = JSON.stringify(metadata);
+      await alert.save();
+    }
     created.push(alert);
   }
   await writeAudit({ user: req.user, action: 'FRAUD_SCAN', entity: 'Tender', entityId: tenderId, req });
@@ -61,7 +74,9 @@ const listAlerts = asyncHandler(async (req, res) => {
 const resolveAlert = asyncHandler(async (req, res) => {
   const alert = await Alert.findByPk(req.params.id);
   if (!alert) return res.status(404).json({ error: 'Alerte introuvable' });
-  alert.status = req.body.status || 'resolue';
+  const status = req.body.status || 'resolue';
+  if (!['ouverte', 'en_cours', 'resolue'].includes(status)) return res.status(400).json({ error: 'Statut de traitement invalide' });
+  alert.status = status;
   await alert.save();
   await writeAudit({ user: req.user, action: 'RESOLVE_ALERT', entity: 'Alert', entityId: alert.id, req });
   res.json(alert);

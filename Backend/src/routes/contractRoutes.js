@@ -2,13 +2,16 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/contractController');
 const authenticate = require('../middleware/authenticate');
-const { requirePermission } = require('../middleware/authorize');
+const { authorize, requirePermission } = require('../middleware/authorize');
 const { upload } = require('../middleware/upload');
+const verifyPdfUpload = require('../middleware/verifyPdfUpload');
 
 // Attribution et consultation des contrats
 router.post('/bids/:id/award', authenticate, requirePermission('contracts:manage'), ctrl.awardContract);
-router.get('/', authenticate, requirePermission('contracts:manage'), ctrl.listContracts);
-router.get('/:id', authenticate, ctrl.getContract);
+router.get('/', authenticate, requirePermission('contracts:view'), ctrl.listContracts);
+router.get('/:id', authenticate, requirePermission('contracts:view'), ctrl.getContract);
+router.post('/:id/predict-delay', authenticate, requirePermission('contracts:manage'), ctrl.predictContractDelay);
+router.get('/:id/predict-delay', authenticate, requirePermission('contracts:manage'), ctrl.getContractDelayPrediction);
 
 // Suivi de l'exécution, paiements, pénalités, notation
 router.post('/:id/progress', authenticate, requirePermission('contracts:manage'), ctrl.updateProgress);
@@ -17,8 +20,8 @@ router.post('/:id/penalty', authenticate, requirePermission('contracts:manage'),
 router.post('/:id/rating', authenticate, requirePermission('contracts:manage'), ctrl.finalRating);
 
 // Livrables
-router.post('/:id/deliverables', authenticate, upload.single('file'), ctrl.addDeliverable);
-router.get('/:id/deliverables', authenticate, ctrl.listDeliverables);
+router.post('/:id/deliverables', authenticate, authorize('authority', 'supplier'), upload.single('file'), verifyPdfUpload, ctrl.addDeliverable);
+router.get('/:id/deliverables', authenticate, requirePermission('contracts:view'), ctrl.listDeliverables);
 router.post('/deliverables/:id/validate', authenticate, requirePermission('contracts:manage'), ctrl.validateDeliverable);
 
 // Jalons / étapes

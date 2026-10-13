@@ -5,6 +5,7 @@ const { TENDER_TYPES, TENDER_STATUSES } = require('../config/constants');
 const { writeAudit } = require('../middleware/audit');
 const { UPLOAD_DIR } = require('../middleware/upload');
 const path = require('path');
+const fs = require('fs');
 
 function generateReference() {
   const year = new Date().getFullYear();
@@ -33,18 +34,56 @@ const createTender = asyncHandler(async (req, res) => {
 const listTenders = asyncHandler(async (req, res) => {
   const where = {};
   if (req.query.status) where.status = req.query.status;
+  if (req.query.type) where.type = req.query.type;
+  if (req.user.role === 'supplier') where.status = 'publie';
   const tenders = await Tender.findAll({
     where,
-    include: [{ model: TenderDocument, as: 'documents' }],
+    include: [{ model: TenderDocument, as: 'documents', ...(req.user.role === 'supplier' ? { attributes: ['id', 'label', 'originalName', 'mimeType', 'size'] } : {}) }],
     order: [['createdAt', 'DESC']],
   });
   res.json(tenders);
 });
 
+const listPublicTenders = asyncHandler(async (req, res) => {
+  const where = { status: 'publie' };
+  if (req.query.type) where.type = req.query.type;
+  const tenders = await Tender.findAll({
+    where,
+    attributes: ['id', 'reference', 'title', 'description', 'type', 'estimatedBudget', 'currency', 'submissionDeadline', 'status', 'publishedAt', 'createdAt', 'updatedAt'],
+    include: [{ model: TenderDocument, as: 'documents', attributes: ['id', 'label', 'originalName', 'mimeType', 'size'] }],
+    order: [['publishedAt', 'DESC']],
+  });
+  res.json(tenders);
+});
+
+const getPublicTender = asyncHandler(async (req, res) => {
+  const tender = await Tender.findOne({
+    where: { id: req.params.id, status: 'publie' },
+    attributes: ['id', 'reference', 'title', 'description', 'type', 'estimatedBudget', 'currency', 'submissionDeadline', 'status', 'publishedAt', 'createdAt', 'updatedAt'],
+    include: [{ model: TenderDocument, as: 'documents', attributes: ['id', 'label', 'originalName', 'mimeType', 'size'] }],
+  });
+  if (!tender) return res.status(404).json({ error: 'Appel d\'offres public introuvable' });
+  res.json(tender);
+});
+
+const downloadTenderDocument = asyncHandler(async (req, res) => {
+  const document = await TenderDocument.findOne({ where: { id: req.params.documentId, tenderId: req.params.id }, include: [{ model: Tender, as: 'tender' }] });
+  if (!document || !document.tender || document.tender.status !== 'publie') return res.status(404).json({ error: 'Document public introuvable' });
+  const root = fs.realpathSync(path.resolve(process.cwd(), UPLOAD_DIR));
+  const candidate = path.resolve(process.cwd(), document.filePath);
+  const relative = path.relative(root, candidate);
+  if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(candidate)) return res.status(404).json({ error: 'Document introuvable' });
+  const safePath = fs.realpathSync(candidate);
+  const realRelative = path.relative(root, safePath);
+  if (realRelative.startsWith('..') || path.isAbsolute(realRelative) || !fs.statSync(safePath).isFile()) return res.status(404).json({ error: 'Document introuvable' });
+  res.download(safePath, document.originalName || 'document.pdf');
+});
+
 const listPublishedTenders = asyncHandler(async (req, res) => {
   const tenders = await Tender.findAll({
     where: { status: 'publie' },
-    include: [{ model: TenderDocument, as: 'documents' }],
+    attributes: ['id', 'reference', 'title', 'description', 'type', 'estimatedBudget', 'currency', 'submissionDeadline', 'status', 'publishedAt', 'createdAt', 'updatedAt'],
+    include: [{ model: TenderDocument, as: 'documents', attributes: ['id', 'label', 'originalName', 'mimeType', 'size'] }],
     order: [['publishedAt', 'DESC']],
   });
   res.json(tenders);
@@ -58,6 +97,8 @@ const getTender = asyncHandler(async (req, res) => {
     ],
   });
   if (!tender) return res.status(404).json({ error: 'Appel d\'offres introuvable' });
+  if (req.user.role === 'supplier' && tender.status !== 'publie') return res.status(404).json({ error: 'Appel d\'offres introuvable' });
+  if (req.user.role === 'supplier') tender.documents = (tender.documents || []).map((doc) => ({ id: doc.id, label: doc.label, originalName: doc.originalName, mimeType: doc.mimeType, size: doc.size }));
   res.json(tender);
 });
 
@@ -113,6 +154,9 @@ module.exports = {
   createTender,
   listTenders,
   listPublishedTenders,
+  listPublicTenders,
+  getPublicTender,
+  downloadTenderDocument,
   getTender,
   updateTender,
   publishTender,

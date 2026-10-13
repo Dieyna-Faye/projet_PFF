@@ -1,99 +1,92 @@
-"""
-Module de Prédiction du Risque de Retard d'Exécution (Section 5.6 & 6)
-Modèle de Machine Learning (Scikit-learn) prédisant la probabilité de retard d'un marché public.
-"""
+"""Explainable contract delay-risk rules; no trained model or probabilities are claimed."""
 
-from typing import Dict, Any, List
-import numpy as np
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
 
-# Coefficients de complexité par type de marché
-TYPE_COMPLEXITY = {
-    "travaux": 1.4,
-    "prestations_intellectuelles": 1.2,
-    "informatique": 1.15,
-    "services": 1.0,
-    "equipements": 0.9,
-    "maintenance": 0.85,
-    "fournitures": 0.8,
-}
+
+def _date(value: Any) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+    except (TypeError, ValueError):
+        return None
+
 
 def predict_execution_delay(contract_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return an evidence-based risk classification from supplied contract facts.
+
+    Unknown facts stay unknown. The score is a transparent rule indicator, not a
+    probability and not the output of a trained model.
     """
-    Prédit la probabilité de retard et identifie les facteurs de risque.
-    contract_data: {
-        "tenderType": "travaux",
-        "estimatedBudget": 50000000,
-        "financialAmount": 42000000,
-        "executionDelayDays": 45,
-        "baselineDelayDays": 90,
-        "supplierYearsExperience": 3
-    }
-    """
-    tender_type = contract_data.get("tenderType", "fournitures")
-    complexity = TYPE_COMPLEXITY.get(tender_type, 1.0)
+    factors: List[str] = []
+    score = 0
+    missing: List[str] = []
 
-    budget = float(contract_data.get("estimatedBudget") or 1)
-    amount = float(contract_data.get("financialAmount") or budget)
-    discount_ratio = amount / budget if budget > 0 else 1.0
+    progress = contract_data.get("progress")
+    start = _date(contract_data.get("startDate"))
+    end = _date(contract_data.get("endDate"))
+    today = _date(contract_data.get("asOfDate")) or date.today()
+    if progress is None:
+        missing.append("avancement")
+    if not start or not end:
+        missing.append("dates du contrat")
 
-    delay_proposed = float(contract_data.get("executionDelayDays") or 60)
-    baseline_delay = float(contract_data.get("baselineDelayDays") or max(60, delay_proposed))
-    delay_ratio = delay_proposed / baseline_delay if baseline_delay > 0 else 1.0
+    if progress is not None and start and end and end > start:
+        elapsed = max(0, min((today - start).days, (end - start).days))
+        expected = elapsed / (end - start).days * 100
+        lag = expected - float(progress)
+        if lag >= 25:
+            score += 2
+            factors.append(f"Avancement inférieur de {round(lag)} points à la progression calendaire attendue")
+        elif lag >= 10:
+            score += 1
+            factors.append(f"Avancement inférieur de {round(lag)} points à la progression calendaire attendue")
+        if today > end and float(progress) < 100:
+            score += 2
+            factors.append("Date de fin dépassée alors que le contrat n’est pas achevé")
 
-    experience = float(contract_data.get("supplierYearsExperience") or 2)
+    milestones = contract_data.get("milestones") or []
+    late_milestones = [m for m in milestones if m.get("status") == "en_retard"]
+    if late_milestones:
+        score += min(2, len(late_milestones))
+        factors.append(f"{len(late_milestones)} jalon(s) marqué(s) en retard")
 
-    risk_factors: List[str] = []
-    risk_score = 0.0
+    overdue_deliverables = contract_data.get("overdueDeliverables") or 0
+    if overdue_deliverables:
+        score += 1
+        factors.append(f"{overdue_deliverables} livrable(s) en retard")
 
-    # 1. Facteur délai trop agressif (sous-estimation des délais)
-    if delay_ratio < 0.65:
-        risk_score += 0.35
-        risk_factors.append(f"Délai proposé très court ({int(delay_proposed)} j vs moyenne {int(baseline_delay)} j) : risque d'irréalisme")
-    elif delay_ratio < 0.8:
-        risk_score += 0.15
+    historical_delays = contract_data.get("historicalDelays")
+    if historical_delays:
+        score += min(2, len(historical_delays))
+        factors.append(f"Historique disponible : {len(historical_delays)} contrat(s) antérieur(s) en retard")
+    elif historical_delays == []:
+        factors.append("Aucun retard historique fourni")
 
-    # 2. Facteur rabais excessif (risque de blocage financier des approvisionnements)
-    if discount_ratio < 0.70:
-        risk_score += 0.30
-        risk_factors.append(f"Rabais financier agressif ({round((1 - discount_ratio)*100)}%) : trésorerie sous tension")
-    elif discount_ratio < 0.85:
-        risk_score += 0.10
-
-    # 3. Facteur expérience du fournisseur
-    if experience < 2:
-        risk_score += 0.25
-        risk_factors.append("Expérience limitée du titulaire (< 2 ans dans le domaine)")
-    elif experience < 5:
-        risk_score += 0.10
-
-    # 4. Complexité du type de marché
-    risk_score *= complexity
-
-    # Normalisation entre 0.05 et 0.95
-    probability = float(np.clip(risk_score, 0.05, 0.95))
-    probability = round(probability, 2)
-
-    if probability >= 0.60:
-        risk_level = "eleve"
-    elif probability >= 0.35:
-        risk_level = "moyen"
+    if missing and not (progress is not None or late_milestones or overdue_deliverables or historical_delays):
+        level = "a_verifier"
+        score_value = None
+        factors.append("Données insuffisantes pour estimer le risque")
     else:
-        risk_level = "faible"
+        score_value = min(6, score)
+        level = "eleve" if score >= 4 else "moyen" if score >= 2 else "faible"
 
     recommendations = []
-    if risk_level == "eleve":
-        recommendations.append("Mettre en place un comité de suivi bimensuel des jalons")
-        recommendations.append("Exiger une caution de bonne exécution avant tout versement")
-    elif risk_level == "moyen":
-        recommendations.append("Valider systématiquement chaque livrable intermédiaire sous 5 jours ouvrés")
+    if level == "eleve":
+        recommendations.append("Organiser une revue rapprochée des jalons et demander un plan de rattrapage")
+    elif level == "moyen":
+        recommendations.append("Vérifier les prochains jalons et la remise des livrables")
+    elif level == "a_verifier":
+        recommendations.append("Compléter les dates, l’avancement et les informations de suivi avant toute estimation")
     else:
-        recommendations.append("Procédure de suivi standard")
+        recommendations.append("Poursuivre le suivi contractuel prévu")
 
     return {
-        "probability_of_delay": probability,
-        "probability_percentage": int(probability * 100),
-        "risk_level": risk_level,
-        "risk_factors": risk_factors,
+        "risk_level": level,
+        "rule_score": score_value,
+        "risk_factors": factors,
+        "missing_data": missing,
         "recommendations": recommendations,
-        "model_used": "Scikit-Learn Random Risk Estimator v1.0",
+        "method": "Règles explicites basées sur l’avancement, les dates, les jalons et les retards historiques; aucun modèle entraîné.",
     }

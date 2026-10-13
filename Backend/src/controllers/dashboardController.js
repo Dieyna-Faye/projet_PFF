@@ -5,7 +5,7 @@ const { Tender, Bid, Supplier, Contract, Score, AuditLog, Alert } = models;
 
 const getDashboard = asyncHandler(async (req, res) => {
   const tenders = await Tender.findAll();
-  const bids = await Bid.findAll({ include: [{ model: Score, as: 'score' }] });
+  const bids = await Bid.findAll({ where: { status: { [Op.ne]: 'brouillon' } }, include: [{ model: Score, as: 'score' }] });
   const suppliers = await Supplier.findAll();
   const contracts = await Contract.findAll();
   const alerts = await Alert.findAll({ where: { status: 'ouverte' } });
@@ -33,11 +33,29 @@ const getDashboard = asyncHandler(async (req, res) => {
     .slice(0, 5)
     .map(([id, count]) => ({ supplierId: id, bids: count }));
 
+  const monthKeys = Array.from({ length: 6 }, (_, offset) => {
+    const date = new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() - (5 - offset));
+    return { key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`, label: date.toLocaleString('fr-FR', { month: 'short' }) };
+  });
+  const monthlySubmissions = monthKeys.map((month) => ({
+    month: month.label,
+    count: bids.filter((bid) => {
+      const created = bid.createdAt && new Date(bid.createdAt);
+      return created && `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}` === month.key;
+    }).length,
+  }));
+
   res.json({
     kpis: {
       appelOffresPublies: published,
+      appelOffresBrouillons: tenders.filter((t) => t.status === 'brouillon').length,
+      appelOffresArchives: tenders.filter((t) => t.status === 'archive').length,
+      nombreAppelsOffres: tenders.length,
       offresRecues: bids.length,
       tauxParticipation: tenders.length ? Math.round((bids.length / Math.max(1, tenders.length)) * 100) : 0,
+      averageOffersPerTender: tenders.length ? Math.round((bids.length / tenders.length) * 10) / 10 : 0,
       montantTotalMarches: Math.round(contractAmount),
       budgetTotal: Math.round(totalBudget),
       economiesRealisees: Math.round(savings > 0 ? savings : 0),
@@ -48,6 +66,7 @@ const getDashboard = asyncHandler(async (req, res) => {
       alertesOuvertes: alerts.length,
     },
     topSuppliers: activeSuppliers,
+    monthlySubmissions,
   });
 });
 

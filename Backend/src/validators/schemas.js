@@ -22,7 +22,7 @@ const userCreateSchema = Joi.object({
   firstName: Joi.string().required(),
   lastName: Joi.string().required(),
   email: Joi.string().email().required(),
-  password: Joi.string().min(6),
+  password: Joi.string().min(6).required(),
   role: Joi.string().valid('admin', 'authority', 'supplier', 'commission', 'auditor'),
   phone: Joi.string().allow(''),
   address: Joi.string().allow(''),
@@ -37,6 +37,8 @@ const userUpdateSchema = Joi.object({
   isActive: Joi.boolean(),
   password: Joi.string().min(6),
 });
+
+const userRoleSchema = Joi.object({ role: Joi.string().valid('admin', 'authority', 'supplier', 'commission', 'auditor').required() });
 
 const roleSchema = Joi.object({
   name: Joi.string().required(),
@@ -64,7 +66,7 @@ const criteriaSchema = Joi.object({
   label: Joi.string().required(),
   description: Joi.string().allow(''),
   weight: Joi.number().min(0).default(0),
-  maxScore: Joi.number().min(0).default(20),
+  maxScore: Joi.number().greater(0).default(20),
   category: Joi.string().default('technique'),
 });
 
@@ -75,14 +77,32 @@ const evaluationSchema = Joi.object({
   comment: Joi.string().allow(''),
 });
 
+const documentReviewSchema = Joi.object({
+  status: Joi.string().valid('conforme', 'non_conforme', 'a_verifier').required(),
+  comment: Joi.string().trim().min(10).max(2000).required(),
+});
+
+const rolePermissionsSchema = Joi.object({
+  permissions: Joi.array().items(Joi.string().max(80)).max(50).required(),
+});
+
+const committeeDecisionSchema = Joi.object({
+  decision: Joi.string().valid('validee', 'rejetee').required(),
+  comment: Joi.string().trim().min(10).max(2000).required(),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
   userCreateSchema,
   userUpdateSchema,
+  userRoleSchema,
   roleSchema,
   tenderSchema,
   bidSchema,
   criteriaSchema,
   evaluationSchema,
+  documentReviewSchema,
+  rolePermissionsSchema,
+  committeeDecisionSchema,
 };

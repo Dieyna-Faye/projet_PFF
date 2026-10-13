@@ -53,7 +53,7 @@ test('POST /api/auth/register create un compte fournisseur', async () => {
       lastName: 'Martin',
       email: 'alice@example.com',
       password: 'MotDePasse123!',
-      role: 'supplier',
+      role: 'admin', // Public input must not be allowed to create privileged accounts.
       phone: '770000123',
       address: 'Dakar',
       companyName: 'Sarl Demo',
@@ -68,6 +68,7 @@ test('POST /api/auth/register create un compte fournisseur', async () => {
 
     assert.equal(response.status, 201, body.error || 'register failed');
     assert.equal(body.user.email, payload.email);
+    assert.equal(body.user.role, 'supplier');
     assert.ok(body.token, 'token absent');
   } finally {
     server.close();

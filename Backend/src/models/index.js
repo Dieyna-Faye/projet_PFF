@@ -112,6 +112,13 @@ Bid.init(
     receiptHash: { type: DataTypes.STRING },
     automaticSummary: { type: DataTypes.TEXT },
     extractedText: { type: DataTypes.TEXT },
+    analysisStatus: { type: DataTypes.STRING, defaultValue: 'a_verifier' },
+    analyzedAt: { type: DataTypes.DATE },
+    aiAnalysis: { type: DataTypes.TEXT },
+    committeeDecision: { type: DataTypes.STRING },
+    committeeComment: { type: DataTypes.TEXT },
+    committeeDecidedAt: { type: DataTypes.DATE },
+    committeeDecidedBy: { type: DataTypes.UUID },
   },
   { sequelize, modelName: 'Bid', tableName: 'bids' }
 );
@@ -132,6 +139,11 @@ BidDocument.init(
     expiryDate: { type: DataTypes.DATE },
     isExpired: { type: DataTypes.BOOLEAN, defaultValue: false },
     extractedText: { type: DataTypes.TEXT },
+    extractedFields: { type: DataTypes.TEXT, defaultValue: '{}' },
+    reviewStatus: { type: DataTypes.STRING, allowNull: false, defaultValue: 'a_verifier' },
+    reviewComment: { type: DataTypes.TEXT },
+    reviewedAt: { type: DataTypes.DATE },
+    reviewedBy: { type: DataTypes.UUID },
   },
   { sequelize, modelName: 'BidDocument', tableName: 'bid_documents' }
 );
@@ -173,14 +185,17 @@ class Score extends Model {}
 Score.init(
   {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    adminScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
-    technicalScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
-    financialScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
-    experienceScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
-    delayScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
-    globalScore: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
-    riskLevel: { type: DataTypes.STRING, defaultValue: 'faible' },
+    adminScore: { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: null },
+    technicalScore: { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: null },
+    financialScore: { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: null },
+    experienceScore: { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: null },
+    delayScore: { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: null },
+    globalScore: { type: DataTypes.DECIMAL(5, 2), allowNull: true, defaultValue: null },
+    scoreCoveragePercent: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 0 },
+    scoreComplete: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    riskLevel: { type: DataTypes.STRING, defaultValue: 'a_verifier' },
     recommendation: { type: DataTypes.STRING },
+    details: { type: DataTypes.TEXT, allowNull: false, defaultValue: '{}' },
   },
   { sequelize, modelName: 'Score', tableName: 'scores' }
 );
@@ -314,6 +329,8 @@ Bid.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' });
 
 Bid.hasMany(BidDocument, { foreignKey: 'bidId', as: 'documents' });
 BidDocument.belongsTo(Bid, { foreignKey: 'bidId', as: 'bid' });
+BidDocument.belongsTo(User, { foreignKey: 'reviewedBy', as: 'reviewer', constraints: false });
+Bid.belongsTo(User, { foreignKey: 'committeeDecidedBy', as: 'committeeReviewer', constraints: false });
 
 Tender.hasMany(EvaluationCriteria, { foreignKey: 'tenderId', as: 'criteria' });
 EvaluationCriteria.belongsTo(Tender, { foreignKey: 'tenderId', as: 'tender' });

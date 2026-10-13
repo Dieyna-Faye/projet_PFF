@@ -17,10 +17,9 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowed = ['.pdf', '.png', '.jpg', '.jpeg', '.doc', '.docx', '.xls', '.xlsx'];
   const ext = path.extname(file.originalname).toLowerCase();
-  if (allowed.includes(ext)) cb(null, true);
-  else cb(new Error('Type de fichier non autorise'), false);
+  if (ext === '.pdf' && ['application/pdf', 'application/octet-stream'].includes(file.mimetype)) cb(null, true);
+  else cb(new Error('Seuls les fichiers PDF sont autorisés'), false);
 };
 
 const upload = multer({

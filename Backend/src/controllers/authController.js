@@ -12,7 +12,8 @@ function buildToken(user, role) {
 
 const register = asyncHandler(async (req, res) => {
   const body = req.validated;
-  const roleName = body.role && ROLES[body.role.toUpperCase()] ? body.role : ROLES.SUPPLIER;
+  // Public registration must never grant an elevated role from browser input.
+  const roleName = ROLES.SUPPLIER;
   const role = await Role.findOne({ where: { name: roleName } });
   if (!role) return res.status(400).json({ error: 'Role invalide' });
 

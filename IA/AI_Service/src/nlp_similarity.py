@@ -12,12 +12,12 @@ def compute_similarity_matrix(documents: List[Dict[str, Any]], threshold: float 
     documents : [ {"id": "offre-1", "title": "SARL X", "text": "..."} , ... ]
     """
     if len(documents) < 2:
-        return {"pairs": [], "matrix": [], "high_similarity_alerts": []}
+        return {"pairs": [], "matrix": [], "high_similarity_alerts": [], "status": "insufficient_data", "explanation": "Au moins deux documents sont nécessaires.", "limitations": "La similarité textuelle est un signal de comparaison, jamais une preuve de collusion."}
 
     texts = [doc.get("text", "") for doc in documents]
     # Si tous les textes sont vides ou trop courts
-    if sum(len(t.strip()) for t in texts) < 20:
-        return {"pairs": [], "matrix": [], "high_similarity_alerts": []}
+    if sum(len(t.strip()) for t in texts) < 20 or sum(bool(t.strip()) for t in texts) < 2:
+        return {"pairs": [], "matrix": [], "high_similarity_alerts": [], "status": "insufficient_data", "explanation": "Les textes extraits sont absents ou trop courts.", "limitations": "Le résultat dépend de la qualité OCR et des documents comparés."}
 
     try:
         from sklearn.feature_extraction.text import TfidfVectorizer
@@ -52,8 +52,8 @@ def compute_similarity_matrix(documents: List[Dict[str, Any]], threshold: float 
                 if score >= threshold:
                     alerts.append({
                         "type": "documents_similaires_nlp",
-                        "severity": "critique" if score >= 0.85 else "eleve",
-                        "message": f"Forte similarité textuelle ({score_pct}%) détectée entre {documents[i].get('title')} et {documents[j].get('title')}",
+                        "severity": "moyen" if score >= 0.85 else "faible",
+                        "message": f"Signal à vérifier : similarité textuelle de {score_pct}% entre les deux documents",
                         "pair": pair_info
                     })
 
@@ -62,11 +62,15 @@ def compute_similarity_matrix(documents: List[Dict[str, Any]], threshold: float 
             "matrix": sim_matrix.round(4).tolist(),
             "high_similarity_alerts": alerts,
             "count": len(alerts)
+            ,"status": "completed",
+            "method": "TF-IDF (unigrammes et bigrammes) avec similarité cosinus",
+            "explanation": "Le score compare les termes et expressions partagés dans les textes extraits.",
+            "limitations": "La mise en page, les formulations standard et les erreurs OCR influencent les scores; un humain doit examiner tout signal."
         }
 
     except Exception as e:
         return {
-            "error": str(e),
+            "error": "Comparaison impossible pour les textes fournis",
             "pairs": [],
             "matrix": [],
             "high_similarity_alerts": []

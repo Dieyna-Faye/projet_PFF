@@ -25,13 +25,13 @@ function detectFraud(suppliers, bids, tender, historicalContracts = []) {
   }
 
   for (const [addr, ids] of Object.entries(seenAddress))
-    if (ids.length > 1) add('meme_adresse', 'eleve', `Plusieurs fournisseurs partagent l'adresse : ${addr}`, { ids });
+    if (ids.length > 1) add('meme_adresse', 'moyen', 'Signal à vérifier : plusieurs fournisseurs partagent une adresse déclarée', { ids });
   for (const [phone, ids] of Object.entries(seenPhone))
-    if (ids.length > 1) add('meme_telephone', 'eleve', `Memes numeros de telephone : ${phone}`, { ids });
+    if (ids.length > 1) add('meme_telephone', 'moyen', 'Signal à vérifier : plusieurs fournisseurs partagent un numéro déclaré', { ids });
   for (const [email, ids] of Object.entries(seenEmail))
-    if (ids.length > 1) add('meme_email', 'eleve', `Memes adresses email : ${email}`, { ids });
+    if (ids.length > 1) add('meme_email', 'moyen', 'Signal à vérifier : plusieurs fournisseurs partagent une adresse e-mail déclarée', { ids });
   for (const [reg, ids] of Object.entries(seenRegistre))
-    if (ids.length > 1) add('meme_registre', 'eleve', `Memes registres de commerce : ${reg}`, { ids });
+    if (ids.length > 1) add('meme_registre', 'moyen', 'Signal à vérifier : plusieurs fournisseurs déclarent un même registre de commerce', { ids });
 
   // 2. Prix anormalement bas ou eleve par rapport au budget estimatif
   const estimatedBudget = tender ? Number(tender.estimatedBudget || 0) : 0;
@@ -43,15 +43,15 @@ function detectFraud(suppliers, bids, tender, historicalContracts = []) {
           add(
             'prix_anormalement_bas',
             'eleve',
-            `Offre anormalement basse (${amt} vs budget ${estimatedBudget}) : risque de dumping ou offre irrealiste`,
-            { bidId: b.id, amount: amt, budget: estimatedBudget }
+            `Signal à examiner : offre située sous 55 % du budget estimatif; ce seuil ne démontre pas une irrégularité.`,
+            { bidId: b.id, amount: amt, budget: estimatedBudget, reviewRequired: true }
           );
         } else if (amt > estimatedBudget * 1.25) {
           add(
             'prix_anormalement_eleve',
             'moyen',
-            `Offre depassant de plus de 25% le budget estimatif (${amt} vs ${estimatedBudget})`,
-            { bidId: b.id, amount: amt, budget: estimatedBudget }
+            `Signal à examiner : offre supérieure de plus de 25 % au budget estimatif.`,
+            { bidId: b.id, amount: amt, budget: estimatedBudget, reviewRequired: true }
           );
         }
       }
@@ -67,7 +67,7 @@ function detectFraud(suppliers, bids, tender, historicalContracts = []) {
       add(
         'offres_proches',
         'moyen',
-        `Offres financieres tres proches detectees (ecart <= ${PRICE_PROXIMITY_RATIO * 100}%)`,
+        `Signal à vérifier : les montants de plusieurs offres sont proches; cela ne prouve pas une coordination.`,
         { bidIds: close.map((c) => c.id) }
       );
   }
@@ -79,8 +79,8 @@ function detectFraud(suppliers, bids, tender, historicalContracts = []) {
       if (sim >= SIMILARITY_THRESHOLD) {
         add(
           'documents_similaires',
-          'eleve',
-          `Similarite de documents elevee (${Math.round(sim * 100)}%) entre deux soumissions`,
+          'moyen',
+          `Signal à vérifier : similarité documentaire de ${Math.round(sim * 100)} % entre deux soumissions.`,
           { bidIds: [bids[i].id, bids[j].id], score: sim }
         );
       }
@@ -103,8 +103,8 @@ function detectFraud(suppliers, bids, tender, historicalContracts = []) {
         links.push({ supplier1: s1.companyName || s1.id, supplier2: s2.companyName || s2.id, reasons });
         add(
           'reseau_collusion',
-          'critique',
-          `Collusion directe detectee entre "${s1.companyName || s1.id}" et "${s2.companyName || s2.id}" : ${reasons.join(', ')}`,
+          'moyen',
+          `Signal à vérifier : coordonnées déclarées partagées entre "${s1.companyName || s1.id}" et "${s2.companyName || s2.id}".`,
           { supplierIds: [s1.id, s2.id], reasons }
         );
       }
